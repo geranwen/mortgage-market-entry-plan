@@ -1,0 +1,165 @@
+---
+title: "case_draft8"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Load Data and Libraries
+
+```{r library, message = FALSE}
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+library(lubridate)
+library(forcats)
+library(caret)
+library(sf)
+library(performance)
+source('fn_mod_eval.R')
+options(scipen=999)
+
+load('dff1.3.Rdata')
+```
+
+# WF Recent Info
+
+```{r}
+dff_WellsFargo <- dff1.3 %>%
+  filter(SELLER == "Wells Fargo")
+profile_WF <- dff_WellsFargo %>%
+  filter(ORIG_DTE_Y >= 2009) %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(count = n(), 
+            bank_sum = sum(orig_amt),
+            default_rt = 1 - sum(LAST_STAT == 'P') / count,
+            orig_amt_q1 = quantile(orig_amt, 0.25), 
+            orig_amt_q2 = quantile(orig_amt, 0.5), 
+            orig_amt_q3 = quantile(orig_amt, 0.75), 
+            CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+            CSCORE_A_q2 = quantile(CSCORE_A, 0.5),
+            CSCORE_A_q3 = quantile(CSCORE_A, 0.75),
+            rt_dev_q1 = quantile(rt_dev, 0.25),
+            rt_dev_q2 = quantile(rt_dev, 0.5),
+            rt_dev_q3 = quantile(rt_dev, 0.75),
+            orig_rt_q1 = quantile(orig_rt, 0.25),
+            orig_rt_q2 = quantile(orig_rt, 0.5),
+            orig_rt_q3 = quantile(orig_rt, 0.75),
+            dti_q1 = quantile(dti, 0.25),
+            dti_q2 = quantile(dti, 0.5),
+            dti_q3 = quantile(dti, 0.75)) %>%
+  arrange(-ORIG_DTE_Y)
+profile_WF
+summary(profile_WF)
+```
+
+```{r}
+dff_USB <- dff1.3 %>%
+  filter(SELLER == "U.S. Bank N.A.")
+profile_USB <- dff_USB %>%
+  filter(ORIG_DTE_Y >= 2009) %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(count = n(), 
+            bank_sum = sum(orig_amt),
+            default_rt = 1 - sum(LAST_STAT == 'P') / count,
+            orig_amt_q1 = quantile(orig_amt, 0.25), 
+            orig_amt_q2 = quantile(orig_amt, 0.5), 
+            orig_amt_q3 = quantile(orig_amt, 0.75), 
+            CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+            CSCORE_A_q2 = quantile(CSCORE_A, 0.5),
+            CSCORE_A_q3 = quantile(CSCORE_A, 0.75),
+            rt_dev_q1 = quantile(rt_dev, 0.25),
+            rt_dev_q2 = quantile(rt_dev, 0.5),
+            rt_dev_q3 = quantile(rt_dev, 0.75),
+            orig_rt_q1 = quantile(orig_rt, 0.25),
+            orig_rt_q2 = quantile(orig_rt, 0.5),
+            orig_rt_q3 = quantile(orig_rt, 0.75),
+            dti_q1 = quantile(dti, 0.25),
+            dti_q2 = quantile(dti, 0.5),
+            dti_q3 = quantile(dti, 0.75)) %>%
+  arrange(-ORIG_DTE_Y)
+profile_USB
+summary(profile_USB)
+```
+```{r}
+dff_Truist <- dff1.3 %>%
+  filter(SELLER == "Truist Bank")
+profile_USB <- dff_Truist %>%
+  filter(ORIG_DTE_Y >= 2009) %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(count = n(), 
+            bank_sum = sum(orig_amt),
+            default_rt = 1 - sum(LAST_STAT == 'P') / count,
+            orig_amt_q1 = quantile(orig_amt, 0.25), 
+            orig_amt_q2 = quantile(orig_amt, 0.5), 
+            orig_amt_q3 = quantile(orig_amt, 0.75), 
+            CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+            CSCORE_A_q2 = quantile(CSCORE_A, 0.5),
+            CSCORE_A_q3 = quantile(CSCORE_A, 0.75),
+            rt_dev_q1 = quantile(rt_dev, 0.25),
+            rt_dev_q2 = quantile(rt_dev, 0.5),
+            rt_dev_q3 = quantile(rt_dev, 0.75),
+            orig_rt_q1 = quantile(orig_rt, 0.25),
+            orig_rt_q2 = quantile(orig_rt, 0.5),
+            orig_rt_q3 = quantile(orig_rt, 0.75),
+            dti_q1 = quantile(dti, 0.25),
+            dti_q2 = quantile(dti, 0.5),
+            dti_q3 = quantile(dti, 0.75)) %>%
+  arrange(-ORIG_DTE_Y)
+profile_USB
+summary(profile_USB)
+```
+
+
+
+```{r}
+dff_flagstar <- dff1.3 %>%
+  filter(SELLER == "Flagstar Bank, FSB")
+profile_flagstar <- dff_flagstar %>%
+  filter(ORIG_DTE_Y >= 2009) %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(count = n(), 
+            bank_sum = sum(orig_amt),
+            default_rt = 1 - sum(LAST_STAT == 'P') / count,
+            orig_amt_q1 = quantile(orig_amt, 0.25), 
+            orig_amt_q2 = quantile(orig_amt, 0.5), 
+            orig_amt_q3 = quantile(orig_amt, 0.75), 
+            CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+            CSCORE_A_q2 = quantile(CSCORE_A, 0.5),
+            CSCORE_A_q3 = quantile(CSCORE_A, 0.75),
+            rt_dev_q1 = quantile(rt_dev, 0.25),
+            rt_dev_q2 = quantile(rt_dev, 0.5),
+            rt_dev_q3 = quantile(rt_dev, 0.75),
+            orig_rt_q1 = quantile(orig_rt, 0.25),
+            orig_rt_q2 = quantile(orig_rt, 0.5),
+            orig_rt_q3 = quantile(orig_rt, 0.75),
+            dti_q1 = quantile(dti, 0.25),
+            dti_q2 = quantile(dti, 0.5),
+            dti_q3 = quantile(dti, 0.75)) %>%
+  arrange(-ORIG_DTE_Y)
+profile_flagstar
+summary(profile_flagstar)
+```
+
+```{r}
+dff1.3 %>%
+  group_by(LAST_STAT) %>%
+  summarize(count = n()) %>%
+  mutate(freq = count / sum(count) * 100) %>%
+  arrange(-count)
+```
+
+```{r}
+
+```
+
+
+
+
+
+
+

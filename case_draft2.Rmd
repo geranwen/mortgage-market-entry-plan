@@ -1,0 +1,205 @@
+---
+title: "case_draft2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Load Data and Libraries
+
+```{r library, message = FALSE}
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+library(lubridate)
+library(forcats)
+library(caret)
+library(performance)
+source('fn_mod_eval.R')
+options(scipen=999)
+```
+
+```{r}
+df7 <- read.csv("dataset_Fall 2021 row.csv", header = TRUE, stringsAsFactors = TRUE)
+date_cols = c(3,14,15,31,33,35,37,39,41,42) #all the cols that should be dates.
+df7[,date_cols] <- lapply(df7[, date_cols], as.Date)
+# save(df7, file='df7.Rdata')
+
+# rt_ongoing <- read.csv("Ongoing_Mortgages.csv", header = TRUE, stringsAsFactors = TRUE)
+# load('df7.Rdata')
+rt_working_data <- read.csv("Working_data_Mortgages_fixed.csv", header = TRUE, stringsAsFactors = TRUE) %>%
+  select(LOAN_ID, rt_dev)
+```
+
+
+```{r load df w rt_dev}
+df7 <- merge(df7[df7$LAST_STAT != 'C',], rt_working_data, by="LOAN_ID") %>%
+  arrange(ROW) %>%
+  relocate(rt_dev, .after = orig_rt) %>%
+  select(ROW, everything())
+
+```
+
+
+# Modeling
+
+## Prepare data for modeling
+
+
+```{r load fed rates & more}
+
+df7.5 <- df7 %>%
+  filter(PROP_TYP != 'CP') %>%
+  select(-LAST_UPB, -state) %>%
+  mutate(is_success = ifelse(LAST_STAT == 'P', TRUE, FALSE), 
+       rt_increase = LAST_RT - orig_rt, 
+       oltv_percentage = oltv / ocltv * 100, 
+       init_mo_payment = orig_amt * (orig_rt/100 * (1 + orig_rt/100)^orig_trm) / (-1 + (1 + orig_rt/100)^orig_trm),
+       CSCORE_AVG = ifelse(!is.na(CSCORE_B),CSCORE_B, CSCORE_C )/2 + ifelse(!is.na(CSCORE_C),CSCORE_C, CSCORE_B )/2,
+       dti = ifelse( is.na(dti), 0, dti), 
+       mi_pct = ifelse( is.na(mi_pct), 0, mi_pct),
+       zip_3 = as.factor(ifelse(zip_3 < 660 | zip_3 == 682 | zip_3 > 694, 0, zip_3)),
+       msa = as.factor(msa),
+       msa = fct_collapse(msa, 'other_msa' = c('10740', '11700', '16740', '16980', '28140', '29820', 
+                     '31700', '34980', '35620', '38860', '39900', '42140', '47260'))
+       ) %>%
+  relocate(rt_increase, .after=LAST_RT) %>%
+  relocate(CSCORE_AVG, .after = dti)%>%
+  relocate(oltv_percentage, .before=num_bo) %>%
+  relocate(init_mo_payment, .before=orig_trm) %>%
+  select(is_success, everything(), -ROW, -LAST_RT, -CSCORE_B, -CSCORE_C, 
+         -SELLER, -SERVICER, -LAST_STAT, -LAST_DTE, -ORIG_DTE, -FRST_DTE)
+
+df7.5 <- df7.5 %>%
+  mutate(F30_DTE = ifelse(is.na(F30_DTE), FALSE, TRUE),
+         F60_DTE = ifelse(is.na(F60_DTE), FALSE, TRUE),
+         F90_DTE = ifelse(is.na(F90_DTE), FALSE, TRUE),
+         F120_DTE = ifelse(is.na(F120_DTE), FALSE, TRUE),
+         F180_DTE = ifelse(is.na(F180_DTE), FALSE, TRUE),
+         LPI_DTE = ifelse(is.na(LPI_DTE), FALSE, TRUE),
+         FCC_DTE = ifelse(is.na(FCC_DTE), FALSE, TRUE)
+         ) %>%
+  select(1:24) %>%
+  na.exclude
+
+sapply(df7.5 ,function(x) sum(is.na(x)))
+
+```
+
+```{r}
+summary(df7.5)
+# summary(df7)
+```
+
+
+
+## Modeling
+
+
+```{r}
+set.seed(123)
+rand7.5 = sort(sample(nrow(df7.5), nrow(df7.5)*.8))
+df7.5_train<-df7.5[rand7.5,]
+df7.5_test<-df7.5[-rand7.5,]
+
+mod_sec2 <- glm(is_success ~. -LOAN_ID, family = binomial(link='logit'), 
+                data=df7.5_train, na.action = 'na.omit')
+
+# mod_sec3 <- glm(is_success ~. -LOAN_ID -orig_rt, family = binomial(link='logit'), 
+#                 data=df7.5_train, na.action = 'na.omit')
+
+
+
+df7.6_trans <- df7.5 %>%
+  mutate(orig_amt = log(orig_amt), 
+         ORIG_VAL = log(ORIG_VAL),
+         orig_rt = log(orig_rt),
+         rt_dev = log(rt_dev + 0.001 - min(df7.5$rt_dev, na.rm = TRUE)))
+
+rand7.6 = sort(sample(nrow(df7.6_trans), nrow(df7.6_trans)*.8))
+df7.6_train<-df7.6_trans[rand7.6,]
+df7.6_test<-df7.6_trans[-rand7.6,]
+
+# mod_sec4 <- glm(is_success ~. -LOAN_ID, family = binomial(link='logit'), 
+#                 data=df7.6_train, na.action = 'na.omit')
+
+# save(mod_sec2, file='mod_sec2')
+summary(mod_sec2)
+mod_sec2
+source('fn_mod_eval.R')
+cm7.5_mod2 <- eval_model(mod_sec2, df7.5_test)
+# cm7.5_mod3 <- eval_model(mod_sec3, df7.5_test)
+# cm7.6_mod4 <- eval_model(mod_sec3, df7.6_test)
+```
+
+```{r}
+mod_sec_2_backwards <- step(mod_sec2)
+# save(mod_sec_2_backwards, file = "mod_sec2_backwards.Rdata")
+```
+
+```{r}
+mod_sec_2_backwards
+```
+
+
+```{r}
+round(cor(df7.5 %>% select(where(is.numeric), -LOAN_ID)),3)
+```
+
+
+```{r new df without cor vars}
+df7.7 <- df7.5 %>%
+  select( -init_mo_payment, -oltv)
+# round(cor(df7.7 %>% select(where(is.numeric), -LOAN_ID)),3)
+
+rand7.7 = sort(sample(nrow(df7.7), nrow(df7.7)*.8))
+df7.7_train<-df7.7[rand7.7,]
+df7.7_test<-df7.7[-rand7.7,]
+
+mod5 <- glm(is_success ~. -LOAN_ID, family = binomial(link='logit'), 
+                data=df7.7_train, na.action = 'na.omit')
+3
+check_collinearity(mod5)
+# mod6_caret <- train(is_success ~. - LOAN_ID, data = df7.7_train, method = 'glm')
+cm_mod5 <- eval_model(mod5, df7.7_test)
+```
+
+```{r}
+mod5_backwards <- step(mod5)
+# save(mod5_backwards, file = "mod5_backwards.Rdata")
+
+```
+
+```{r}
+
+```
+
+
+
+
+
+```{r}
+# pred_6.1 = predict(mod_sec2,df6.1_test)
+# idx = which(pred_6.1>=0.5)
+# pred_6.1[idx] = 1
+# pred_6.1[-idx] = 0
+# confusionmatrix <- table(pred_6.1, df6.1_test$is_success)
+# confusionmatrix
+# print(1-(confusionmatrix[1,2]+confusionmatrix[2,1])/nrow(df6.1_test))
+```
+
+
+```{r}
+# mod_precision <- confusionmatrix[2,2]/(confusionmatrix[2,2] + confusionmatrix[2,1])
+# mod_recall <- confusionmatrix[2,2]/(confusionmatrix[2,2] + confusionmatrix[1,2])
+# mod_f1 <- 2 * mod_precision * mod_recall / (mod_precision + mod_recall)
+# 
+# mod_precision
+# mod_recall
+# mod_f1
+```
+
+

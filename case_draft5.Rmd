@@ -1,0 +1,415 @@
+---
+title: "case_draft4"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Load Data and Libraries
+
+```{r library, message = FALSE}
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+library(lubridate)
+library(forcats)
+library(caret)
+library(sf)
+library(performance)
+source('fn_mod_eval.R')
+options(scipen=999)
+
+load('dff1.2.Rdata')
+```
+
+# Competitor Study
+
+## Historic vs basic stats, by Bank
+
+### Wells Fargo
+
+```{r Wells Fargo study}
+
+dff_WellsFargo_Omaha <- dff1.2 %>%
+  filter(zip_3_mod == 681 & SELLER == "Wells Fargo")
+profile_WF_Omaha <- dff_WellsFargo_Omaha %>%
+  # filter(ORIG_DTE_Y >= as.Date('2013-12-31')) %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(n(), 
+            orig_amt_q1 = quantile(orig_amt, 0.25), 
+            orig_amt_q2 = quantile(orig_amt, 0.5), 
+            orig_amt_q3 = quantile(orig_amt, 0.75), 
+            CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+            CSCORE_A_q2 = quantile(CSCORE_A, 0.5),
+            CSCORE_A_q3 = quantile(CSCORE_A, 0.75),
+            rt_dev_q1 = quantile(rt_dev, 0.25),
+            rt_dev_q2 = quantile(rt_dev, 0.5),
+            rt_dev_q3 = quantile(rt_dev, 0.75),
+            orig_rt_q1 = quantile(orig_rt, 0.25),
+            orig_rt_q2 = quantile(orig_rt, 0.5),
+            orig_rt_q3 = quantile(orig_rt, 0.75),
+            dti_q1 = quantile(dti, 0.25),
+            dti_q2 = quantile(dti, 0.5),
+            dti_q3 = quantile(dti, 0.75)) %>%
+  arrange(-ORIG_DTE_Y)
+
+dff_Omaha <- dff1.2 %>% filter(zip_3_mod == 681)
+
+profile_Omaha<- dff_Omaha%>%
+  # filter(ORIG_DTE_Y >= as.Date('2013-12-31')) %>%
+  group_by(ORIG_DTE_Y) %>%
+   summarize(n(), 
+            orig_amt_q1 = quantile(orig_amt, 0.25), 
+            orig_amt_q2 = quantile(orig_amt, 0.5), 
+            orig_amt_q3 = quantile(orig_amt, 0.75), 
+            CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+            CSCORE_A_q2 = quantile(CSCORE_A, 0.5),
+            CSCORE_A_q3 = quantile(CSCORE_A, 0.75),
+            rt_dev_q1 = quantile(rt_dev, 0.25),
+            rt_dev_q2 = quantile(rt_dev, 0.5),
+            rt_dev_q3 = quantile(rt_dev, 0.75),
+            orig_rt_q1 = quantile(orig_rt, 0.25),
+            orig_rt_q2 = quantile(orig_rt, 0.5),
+            orig_rt_q3 = quantile(orig_rt, 0.75),
+            dti_q1 = quantile(dti, 0.25),
+            dti_q2 = quantile(dti, 0.5),
+            dti_q3 = quantile(dti, 0.75)) %>%
+  arrange(-ORIG_DTE_Y)
+```
+
+### Other banks compared together
+
+```{r other banks}
+profile_truist <- dff_Omaha %>%
+  filter(SELLER == "Truist Bank") %>%
+  group_by(ORIG_DTE_Y) %>%
+   summarize(n(), 
+            orig_amt_q1 = quantile(orig_amt, 0.25), 
+            orig_amt_q2 = quantile(orig_amt, 0.5), 
+            orig_amt_q3 = quantile(orig_amt, 0.75), 
+            CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+            CSCORE_A_q2 = quantile(CSCORE_A, 0.5),
+            CSCORE_A_q3 = quantile(CSCORE_A, 0.75),
+            rt_dev_q1 = quantile(rt_dev, 0.25),
+            rt_dev_q2 = quantile(rt_dev, 0.5),
+            rt_dev_q3 = quantile(rt_dev, 0.75),
+            orig_rt_q1 = quantile(orig_rt, 0.25),
+            orig_rt_q2 = quantile(orig_rt, 0.5),
+            orig_rt_q3 = quantile(orig_rt, 0.75),
+            dti_q1 = quantile(dti, 0.25),
+            dti_q2 = quantile(dti, 0.5),
+            dti_q3 = quantile(dti, 0.75)) %>%
+  arrange(-ORIG_DTE_Y)
+
+profile_flagstar <- dff_Omaha %>%
+  filter(SELLER == "Flagstar Bank, FSB") %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(n(), 
+            orig_amt_q1 = quantile(orig_amt, 0.25), 
+            orig_amt_q2 = quantile(orig_amt, 0.5), 
+            orig_amt_q3 = quantile(orig_amt, 0.75), 
+            CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+            CSCORE_A_q2 = quantile(CSCORE_A, 0.5),
+            CSCORE_A_q3 = quantile(CSCORE_A, 0.75),
+            rt_dev_q1 = quantile(rt_dev, 0.25),
+            rt_dev_q2 = quantile(rt_dev, 0.5),
+            rt_dev_q3 = quantile(rt_dev, 0.75),
+            orig_rt_q1 = quantile(orig_rt, 0.25),
+            orig_rt_q2 = quantile(orig_rt, 0.5),
+            orig_rt_q3 = quantile(orig_rt, 0.75),
+            dti_q1 = quantile(dti, 0.25),
+            dti_q2 = quantile(dti, 0.5),
+            dti_q3 = quantile(dti, 0.75)) %>%
+  arrange(-ORIG_DTE_Y)
+
+profile_Quicken <- dff_Omaha %>%
+  filter(SELLER == "Quicken Loans") %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(n(), 
+            orig_amt_q1 = quantile(orig_amt, 0.25), 
+            orig_amt_q2 = quantile(orig_amt, 0.5), 
+            orig_amt_q3 = quantile(orig_amt, 0.75), 
+            CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+            CSCORE_A_q2 = quantile(CSCORE_A, 0.5),
+            CSCORE_A_q3 = quantile(CSCORE_A, 0.75),
+            rt_dev_q1 = quantile(rt_dev, 0.25),
+            rt_dev_q2 = quantile(rt_dev, 0.5),
+            rt_dev_q3 = quantile(rt_dev, 0.75),
+            orig_rt_q1 = quantile(orig_rt, 0.25),
+            orig_rt_q2 = quantile(orig_rt, 0.5),
+            orig_rt_q3 = quantile(orig_rt, 0.75),
+            dti_q1 = quantile(dti, 0.25),
+            dti_q2 = quantile(dti, 0.5),
+            dti_q3 = quantile(dti, 0.75)) %>%
+  arrange(-ORIG_DTE_Y)
+
+profile_Omaha
+profile_Quicken
+profile_flagstar
+profile_truist
+profile_WF_Omaha
+
+```
+
+
+## Analyze all banks by year
+
+### Year 2019
+
+```{r 2019}
+dff_2019_top_banks <- dff1.2 %>%
+  filter(ORIG_DTE_Y == "2019", zip_3_mod == 681) %>%
+  group_by(SELLER) %>%
+  mutate(bank_sum = sum(orig_amt)) %>%
+  arrange(-bank_sum)
+
+dff_2019_top_banks <- dff_2019_top_banks %>% 
+  group_by(SELLER) %>%
+  summarize(count = n(), 
+            bank_sum = sum(orig_amt),
+            default_rt = sum(LAST_STAT == 'P') / count,
+            orig_amt_q1 = quantile(orig_amt, 0.25), 
+            orig_amt_q2 = quantile(orig_amt, 0.5), 
+            orig_amt_q3 = quantile(orig_amt, 0.75), 
+            CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+            CSCORE_A_q2 = quantile(CSCORE_A, 0.5),
+            CSCORE_A_q3 = quantile(CSCORE_A, 0.75),
+            rt_dev_q1 = quantile(rt_dev, 0.25),
+            rt_dev_q2 = quantile(rt_dev, 0.5),
+            rt_dev_q3 = quantile(rt_dev, 0.75),
+            orig_rt_q1 = quantile(orig_rt, 0.25),
+            orig_rt_q2 = quantile(orig_rt, 0.5),
+            orig_rt_q3 = quantile(orig_rt, 0.75),
+            dti_q1 = quantile(dti, 0.25),
+            dti_q2 = quantile(dti, 0.5),
+            dti_q3 = quantile(dti, 0.75)) %>%
+  mutate(mkt_share = round(bank_sum / sum(bank_sum), 3)) %>%
+  arrange(-bank_sum)
+dff_2019_top_banks
+write.csv(x = dff_2019_top_banks, file = "dff_2019_top_banks.csv")
+
+```
+
+### Year 2018
+
+```{r}
+dff_2018_top_banks <- dff1.2 %>%
+  filter(ORIG_DTE_Y == "2018", zip_3_mod == 681) %>%
+  group_by(SELLER) %>%
+  mutate(bank_sum = sum(orig_amt)) %>%
+  arrange(-bank_sum)
+
+dff_2018_top_banks <- dff_2018_top_banks %>% 
+  group_by(SELLER) %>%
+  summarize(count = n(), 
+            bank_sum = sum(orig_amt),
+            default_rt = sum(LAST_STAT == 'P') / count,
+            orig_amt_q1 = quantile(orig_amt, 0.25), 
+            orig_amt_q2 = quantile(orig_amt, 0.5), 
+            orig_amt_q3 = quantile(orig_amt, 0.75), 
+            CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+            CSCORE_A_q2 = quantile(CSCORE_A, 0.5),
+            CSCORE_A_q3 = quantile(CSCORE_A, 0.75),
+            rt_dev_q1 = quantile(rt_dev, 0.25),
+            rt_dev_q2 = quantile(rt_dev, 0.5),
+            rt_dev_q3 = quantile(rt_dev, 0.75),
+            orig_rt_q1 = quantile(orig_rt, 0.25),
+            orig_rt_q2 = quantile(orig_rt, 0.5),
+            orig_rt_q3 = quantile(orig_rt, 0.75),
+            dti_q1 = quantile(dti, 0.25),
+            dti_q2 = quantile(dti, 0.5),
+            dti_q3 = quantile(dti, 0.75)) %>%
+  mutate(mkt_share = round(bank_sum / sum(bank_sum), 3)) %>%
+  arrange(-bank_sum)
+write.csv(x = dff_2018_top_banks, file = "dff_2018_top_banks.csv")
+
+```
+
+### Year 2017
+
+```{r}
+dff_2017_top_banks <- dff1.2 %>%
+  filter(ORIG_DTE_Y == "2017", zip_3_mod == 681) %>%
+  group_by(SELLER) %>%
+  mutate(bank_sum = sum(orig_amt)) %>%
+  arrange(-bank_sum)
+
+dff_2017_top_banks <- dff_2017_top_banks %>% 
+  group_by(SELLER) %>%
+  summarize(count = n(), 
+            bank_sum = sum(orig_amt),
+            default_rt = sum(LAST_STAT == 'P') / count,
+            orig_amt_q1 = quantile(orig_amt, 0.25), 
+            orig_amt_q2 = quantile(orig_amt, 0.5), 
+            orig_amt_q3 = quantile(orig_amt, 0.75), 
+            CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+            CSCORE_A_q2 = quantile(CSCORE_A, 0.5),
+            CSCORE_A_q3 = quantile(CSCORE_A, 0.75),
+            rt_dev_q1 = quantile(rt_dev, 0.25),
+            rt_dev_q2 = quantile(rt_dev, 0.5),
+            rt_dev_q3 = quantile(rt_dev, 0.75),
+            orig_rt_q1 = quantile(orig_rt, 0.25),
+            orig_rt_q2 = quantile(orig_rt, 0.5),
+            orig_rt_q3 = quantile(orig_rt, 0.75),
+            dti_q1 = quantile(dti, 0.25),
+            dti_q2 = quantile(dti, 0.5),
+            dti_q3 = quantile(dti, 0.75)) %>%
+  mutate(mkt_share = round(bank_sum / sum(bank_sum), 3)) %>%
+  arrange(-bank_sum)
+write.csv(x = dff_2017_top_banks, file = "dff_2017_top_banks.csv")
+
+```
+
+### Year 2020, all & only after Corona
+
+```{r}
+dff_2020_top_banks <- dff1.2 %>%
+  filter(ORIG_DTE_Y == "2020", zip_3_mod == 681) %>%
+  group_by(SELLER) %>%
+  mutate(bank_sum = sum(orig_amt)) %>%
+  arrange(-bank_sum)
+
+dff_2020_top_banks <- dff_2020_top_banks %>% 
+  group_by(SELLER) %>%
+  summarize(count = n(), 
+            bank_sum = sum(orig_amt),
+            default_rt = sum(LAST_STAT == 'P') / count,
+            orig_amt_q1 = quantile(orig_amt, 0.25), 
+            orig_amt_q2 = quantile(orig_amt, 0.5), 
+            orig_amt_q3 = quantile(orig_amt, 0.75), 
+            CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+            CSCORE_A_q2 = quantile(CSCORE_A, 0.5),
+            CSCORE_A_q3 = quantile(CSCORE_A, 0.75),
+            rt_dev_q1 = quantile(rt_dev, 0.25),
+            rt_dev_q2 = quantile(rt_dev, 0.5),
+            rt_dev_q3 = quantile(rt_dev, 0.75),
+            orig_rt_q1 = quantile(orig_rt, 0.25),
+            orig_rt_q2 = quantile(orig_rt, 0.5),
+            orig_rt_q3 = quantile(orig_rt, 0.75),
+            dti_q1 = quantile(dti, 0.25),
+            dti_q2 = quantile(dti, 0.5),
+            dti_q3 = quantile(dti, 0.75)) %>%
+  mutate(mkt_share = round(bank_sum / sum(bank_sum), 3)) %>%
+  arrange(-bank_sum)
+write.csv(x = dff_2020_top_banks, file = "dff_2020_top_banks.csv")
+
+
+dff_2020Corona_top_banks <- dff1.2 %>%
+  filter(ORIG_DTE >= as.Date("2020-02-20"), zip_3_mod == 681) %>%
+  group_by(SELLER) %>%
+  mutate(bank_sum = sum(orig_amt)) %>%
+  arrange(-bank_sum)
+
+dff_2020Corona_top_banks <- dff_2020Corona_top_banks %>% 
+  group_by(SELLER) %>%
+  summarize(count = n(), 
+            bank_sum = sum(orig_amt),
+            default_rt = sum(LAST_STAT == 'P') / count,
+            orig_amt_q1 = quantile(orig_amt, 0.25), 
+            orig_amt_q2 = quantile(orig_amt, 0.5), 
+            orig_amt_q3 = quantile(orig_amt, 0.75), 
+            CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+            CSCORE_A_q2 = quantile(CSCORE_A, 0.5),
+            CSCORE_A_q3 = quantile(CSCORE_A, 0.75),
+            rt_dev_q1 = quantile(rt_dev, 0.25),
+            rt_dev_q2 = quantile(rt_dev, 0.5),
+            rt_dev_q3 = quantile(rt_dev, 0.75),
+            orig_rt_q1 = quantile(orig_rt, 0.25),
+            orig_rt_q2 = quantile(orig_rt, 0.5),
+            orig_rt_q3 = quantile(orig_rt, 0.75),
+            dti_q1 = quantile(dti, 0.25),
+            dti_q2 = quantile(dti, 0.5),
+            dti_q3 = quantile(dti, 0.75)) %>%
+  mutate(mkt_share = round(bank_sum / sum(bank_sum), 3)) %>%
+  arrange(-bank_sum)
+write.csv(x = dff_2020Corona_top_banks, file = "dff_2020Corona_top_banks.csv")
+
+```
+
+
+
+```{r}
+profile_Omaha_PreCorona<- dff_Omaha%>%
+  filter(ORIG_DTE < as.Date('2020-04-01') & ORIG_DTE >= as.Date('2020-01-01')) %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(n(), 
+            orig_amt_q1 = quantile(orig_amt, 0.25), 
+            orig_amt_q2 = quantile(orig_amt, 0.5), 
+            orig_amt_q3 = quantile(orig_amt, 0.75), 
+            CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+            CSCORE_A_q2 = quantile(CSCORE_A, 0.5),
+            CSCORE_A_q3 = quantile(CSCORE_A, 0.75),
+            rt_dev_q1 = quantile(rt_dev, 0.25),
+            rt_dev_q2 = quantile(rt_dev, 0.5),
+            rt_dev_q3 = quantile(rt_dev, 0.75),
+            orig_rt_q1 = quantile(orig_rt, 0.25),
+            orig_rt_q2 = quantile(orig_rt, 0.5),
+            orig_rt_q3 = quantile(orig_rt, 0.75),
+            dti_q1 = quantile(dti, 0.25),
+            dti_q2 = quantile(dti, 0.5),
+            dti_q3 = quantile(dti, 0.75))
+profile_Omaha_PreCorona
+
+profile_Omaha_PostCorona<- dff_Omaha%>%
+  filter(ORIG_DTE >= as.Date('2020-04-01')) %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(n(), 
+            orig_amt_q1 = quantile(orig_amt, 0.25), 
+            orig_amt_q2 = quantile(orig_amt, 0.5), 
+            orig_amt_q3 = quantile(orig_amt, 0.75), 
+            CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+            CSCORE_A_q2 = quantile(CSCORE_A, 0.5),
+            CSCORE_A_q3 = quantile(CSCORE_A, 0.75),
+            rt_dev_q1 = quantile(rt_dev, 0.25),
+            rt_dev_q2 = quantile(rt_dev, 0.5),
+            rt_dev_q3 = quantile(rt_dev, 0.75),
+            orig_rt_q1 = quantile(orig_rt, 0.25),
+            orig_rt_q2 = quantile(orig_rt, 0.5),
+            orig_rt_q3 = quantile(orig_rt, 0.75),
+            dti_q1 = quantile(dti, 0.25),
+            dti_q2 = quantile(dti, 0.5),
+            dti_q3 = quantile(dti, 0.75))
+profile_Omaha_PostCorona
+```
+
+```{r}
+dff1.2 %>%
+  filter(zip_3_mod == 681 & ORIG_DTE >= as.Date('2020-03-01')) %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(count = n(), 
+            bank_sum = sum(orig_amt),
+            success_rt = sum(LAST_STAT == 'P') / count) %>%
+  arrange(-ORIG_DTE_Y)
+```
+
+
+
+
+## Zip vs Bank
+
+```{r}
+dff_2019_zip_bank <- dff1.2 %>%
+  filter(ORIG_DTE_Y == '2019', zip_3_mod != 0) %>%
+  group_by(SELLER) %>%
+  mutate(bank_sum = sum(orig_amt)) %>%
+  arrange(-bank_sum)
+
+dff_2019_zip_bank <- dff_2019_zip_bank %>%
+  group_by(SELLER, zip_3_mod) %>%
+  summarise(sum = log(sum(orig_amt) + 1)) %>%
+  arrange(zip_3_mod)
+
+dff_2019_zip_bank <- pivot_wider(dff_2019_zip_bank, names_from = zip_3_mod, values_from = sum) %>%
+  replace(is.na(.), 0) %>%
+  mutate(cumulative_ttl = rowSums(across(c(1:13)))) %>%
+  relocate(cumulative_ttl, .before='680') %>%
+  arrange(-cumulative_ttl)
+dff_2019_zip_bank
+# write.csv(x = dff_2019_zip_bank, file = "dff_2019_zip_bank.csv")
+
+```
+

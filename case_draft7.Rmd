@@ -1,0 +1,140 @@
+---
+title: "case_draft7"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Load Data and Libraries
+
+```{r library, message = FALSE}
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+library(lubridate)
+library(forcats)
+library(caret)
+library(sf)
+library(performance)
+source('fn_mod_eval.R')
+options(scipen=999)
+```
+
+
+```{r stats for slides}
+load("dff1.2.RData")
+# dff1.2 %>%
+#   filter(LAST_STAT == 'N' | LAST_STAT == 'D' | LAST_STAT == 'F' | LAST_STAT == 'S') %>%
+#   summarize(n(), sum= sum(orig_amt))
+
+dff1.2 %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(rt_dev_q1 = quantile(rt_dev, 0.25),
+            rt_dev_q2 = quantile(rt_dev, 0.5), 
+            rt_dev_q3 = quantile(rt_dev, 0.75),
+            CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+            CSCORE_A_q2 = quantile(CSCORE_A, 0.5),
+            CSCORE_A_q3 = quantile(CSCORE_A, 0.75),
+            orig_amt_q1 = quantile(orig_amt, 0.25),
+            orig_amt_mean = quantile(orig_amt, 0.5),
+            orig_amt_q3 = quantile(orig_amt, 0.75),
+            dti_q1 = quantile(dti, 0.25),
+            dti_q2 = quantile(dti, 0.5),
+            dti_q3 = quantile(dti, 0.75)) %>%
+  arrange(-ORIG_DTE_Y)
+
+```
+
+```{r ranking plot}
+dff_year_rank <- dff1.3 %>%
+  filter(SELLER != "Other", ORIG_DTE_Y %in% c(2001, 2004, 2007, 2010, 2013, 2016, 2019)) %>%
+  mutate(SELLER = as.character(SELLER)) %>%
+  mutate(seller_abr = case_when(
+    SELLER == 'JPMorgan Chase' ~ 'JPM',
+    SELLER == 'Bank Of America, N.A.' ~ 'BOA',
+    SELLER == 'Bishops Gate Residential Mortgage Trust' ~ 'BISH',
+    SELLER == 'First Tennessee Bank National Association' ~ 'FTB',
+    SELLER == 'Flagstar Bank, FSB' ~ 'FLG',
+    SELLER == 'Principal Residential Mortgage Capital Resources, Llc' ~ 'PRM',
+    SELLER == 'Gmac Mortgage, Llc' ~ 'GMAC',
+    SELLER == 'Citimortgage, Inc.' ~ 'CITI',
+    SELLER == 'Amtrust Bank' ~ 'AMTT',
+    SELLER == 'Regions Bank' ~ 'RGNS',
+    SELLER == 'Wells Fargo' ~ 'WFC',
+    SELLER == 'U.S. Bank N.A.' ~ 'USB',
+    SELLER == 'Regions Bank' ~ 'RGNS',
+    SELLER == 'Loandepot.Com, Llc' ~ 'LDPT',
+    SELLER == 'Quicken Loans' ~ 'QCKN',
+    SELLER == 'PennyMac Corp' ~ 'PMT',
+    SELLER == 'Home Point Financial Corporation' ~ 'HPFC',
+    SELLER == 'Lakeview Loan Servicing, LLC' ~ 'LKVW',
+    SELLER == 'Truist Bank' ~ 'TRST',
+    SELLER == 'Truist Bank' ~ 'TFC',
+    SELLER == 'Amerihome Mortgage Company, LLC' ~ 'AHM',
+    TRUE ~ SELLER
+    )) %>%
+  group_by(ORIG_DTE_Y, seller_abr) %>%
+  summarize(Vol = sum(orig_amt)) %>%
+  arrange(ORIG_DTE_Y, -Vol) %>%
+  mutate(ranking = row_number()) %>%
+  mutate(flag = ifelse(seller_abr %in% c("JPM", "WF", "BOA", "USB", "FTB", "QCKN"), TRUE, FALSE),
+         seller_color = if_else(flag == TRUE, seller_abr, "zzz")) %>%
+  filter(ranking <= 10)
+dff_year_rank
+```
+
+```{r}
+my_theme <- function() {
+  # Colors
+  color.background = "white"
+  color.text = "#22211d"
+  # Begin construction of chart
+  theme_bw(base_size=25) +
+    # Format background colors
+    theme(panel.background = element_rect(fill=color.background, color=color.background)) +
+    theme(plot.background  = element_rect(fill=color.background, color=color.background)) +
+    theme(panel.border     = element_rect(color=color.background)) +
+    theme(strip.background = element_rect(fill=color.background, color=color.background)) +
+    # Format the grid
+    theme(panel.grid.major.y = element_blank()) +
+    theme(panel.grid.minor.y = element_blank()) +
+    theme(axis.ticks       = element_blank()) +
+    # Format the legend
+    theme(legend.position = "none") +
+    # Format title and axis labels
+    theme(plot.title       = element_text(color=color.text, size=20, hjust = 0.5)) +
+    theme(axis.title.x     = element_text(size=12, color="black")) +
+    theme(axis.title.y     = element_text(size=12, color="black", vjust=1.25)) +
+    theme(axis.text.x      = element_text(size=8, vjust=0.5, hjust=0.5, color = color.text)) +
+    theme(axis.text.y      = element_text(size=8, color = color.text)) +
+    theme(strip.text       = element_text(face = "bold")) +
+    # Plot margins
+    theme(plot.margin = unit(c(0.35, 0.2, 0.3, 0.35), "cm"))
+}
+
+ggplot(data = dff_year_rank, aes(x=ORIG_DTE_Y, y=ranking, group = seller_abr) ) + 
+  geom_line(aes(color = seller_color, alpha = 1), size = 2) +
+  geom_point(color = "#FFFFFF", size = 4) +
+  geom_point(aes(color = seller_color, alpha = 1), size = 4) +
+  geom_point(color = "#FFFFFF", size = 1) +
+  scale_y_reverse(breaks = 10:1) + 
+  scale_x_continuous(breaks = seq(2001,2019,3), expand = c(.05, .05)) +
+  # geom_text(data = dff_year_rank %>% filter(ORIG_DTE_Y == 2001),
+  #           aes(label = seller_abr, x = 0.5) , hjust = 1, fontface = "bold", color = "#888888", size = 4) +
+  # geom_text(data = dff_year_rank %>% filter(ORIG_DTE_Y == 2019),
+  #           aes(label = seller_abr, x = 16.5) , hjust = 0.15, fontface = "bold", color = "#888888", size = 4) +
+  # coord_cartesian(ylim = c(1,10)) +
+  theme(legend.position = "none") +
+  labs(x = "Years",
+       y = "Rank",
+       title = "Top 10 Mortgage Sellers Over Years") +
+  my_theme() + 
+  scale_color_manual(values = c("#F70020","#191A1A","#FB9701","#1A7D00","#072C8F", "#FFA9DA", "grey"))
+
+```
+
+

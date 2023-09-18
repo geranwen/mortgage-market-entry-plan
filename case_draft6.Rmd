@@ -1,0 +1,223 @@
+---
+title: "case_draft6"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Load Data and Libraries
+
+```{r library, message = FALSE}
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+library(lubridate)
+library(forcats)
+library(caret)
+library(sf)
+library(tigris)
+options(tigris_use_cache = TRUE)
+library(viridis)
+library(performance)
+source('fn_mod_eval.R')
+options(scipen=999)
+```
+
+# Graphing
+
+```{r get zip code map for NE}
+# load("dff1_zip_year_sum.Rdata")
+load("dff1.2.RData")
+dff1.3 <- dff1.2 %>%
+  mutate(zip_3_mod = ifelse(zip_3_mod == 684, 683, zip_3_mod))
+sp_NE <- zctas(cb = TRUE, year = 2000, state = 'NE')
+summary(sp_NE)
+# save(dff1.3, file='dff1.3.Rdata')
+```
+
+
+```{r make sf, warning=FALSE}
+sp_zip680 <- sp_NE %>%  filter(as.numeric(ZCTA)%/%100 == 680)
+sp_zip681 <- sp_NE %>%  filter(as.numeric(ZCTA)%/%100 == 681)
+sp_zip683 <- sp_NE %>%  filter(as.numeric(ZCTA)%/%100 == 683)
+sp_zip684 <- sp_NE %>%  filter(as.numeric(ZCTA)%/%100 == 684)
+sp_zip683_4 <- rbind(sp_zip683, sp_zip684)
+sp_zip685 <- sp_NE %>%  filter(as.numeric(ZCTA)%/%100 == 685)
+sp_zip686 <- sp_NE %>%  filter(as.numeric(ZCTA)%/%100 == 686)
+sp_zip687 <- sp_NE %>%  filter(as.numeric(ZCTA)%/%100 == 687)
+sp_zip688 <- sp_NE %>%  filter(as.numeric(ZCTA)%/%100 == 688)
+sp_zip689 <- sp_NE %>%  filter(as.numeric(ZCTA)%/%100 == 689)
+sp_zip690 <- sp_NE %>%  filter(as.numeric(ZCTA)%/%100 == 690)
+sp_zip691 <- sp_NE %>%  filter(as.numeric(ZCTA)%/%100 == 691)
+sp_zip692 <- sp_NE %>%  filter(as.numeric(ZCTA)%/%100 == 692)
+sp_zip693 <- sp_NE %>%  filter(as.numeric(ZCTA)%/%100 == 693)
+
+# geo_coreNE <- st_union(sp_coreNE$geometry)
+geo_zip681 <- st_union(sp_zip681)
+geo_zip680 <- st_union(sp_zip680)
+geo_zip685 <- st_union(sp_zip685)
+geo_zip683 <- st_union(sp_zip683)
+geo_zip684 <- st_union(sp_zip684)
+geo_zip683_4 <- st_union(sp_zip683_4)
+geo_zip685 <- st_union(sp_zip685)
+geo_zip686 <- st_union(sp_zip686)
+geo_zip687 <- st_union(sp_zip687)
+geo_zip688 <- st_union(sp_zip688)
+geo_zip689 <- st_union(sp_zip689)
+geo_zip690 <- st_union(sp_zip690)
+geo_zip691 <- st_union(sp_zip691)
+geo_zip692 <- st_union(sp_zip692)
+geo_zip693 <- st_union(sp_zip693)
+
+sp_6833 <- sp_zip683 %>%
+  summarise(area = sum(AREA), zip_3 = 681, geom = geo_zip683)
+sp_6834 <- sp_zip684 %>%
+  summarise(area = sum(AREA), zip_3 = 681, geom = geo_zip684)
+
+sp_zipBoth <- rbind(sp_6834, sp_6833)
+plot(sp_zipBoth)
+
+sp_681 <- sp_zip681 %>%
+  summarise(area = sum(AREA), zip_3 = 681, geom = geo_zip681)
+sp_680 <- sp_zip680 %>%
+  summarise(area = sum(AREA), zip_3 = 680, geom = geo_zip680)
+sp_683 <- sp_zip683_4 %>%
+  summarise(area = sum(AREA), zip_3 = 683, geom = geo_zip683_4)
+sp_685 <- sp_zip685 %>%
+  summarise(area = sum(AREA), zip_3 = 685, geom = geo_zip685)
+sp_686 <- sp_zip686 %>%
+  summarise(area = sum(AREA), zip_3 = 686, geom = geo_zip686)
+sp_687 <- sp_zip687 %>%
+  summarise(area = sum(AREA), zip_3 = 687, geom = geo_zip687)
+sp_688 <- sp_zip688 %>%
+  summarise(area = sum(AREA), zip_3 = 688, geom = geo_zip688)
+sp_689 <- sp_zip689 %>%
+  summarise(area = sum(AREA), zip_3 = 689, geom = geo_zip689)
+sp_690 <- sp_zip690 %>%
+  summarise(area = sum(AREA), zip_3 = 690, geom = geo_zip690)
+sp_691 <- sp_zip691 %>%
+  summarise(area = sum(AREA), zip_3 = 691, geom = geo_zip691)
+sp_692 <- sp_zip692 %>%
+  summarise(area = sum(AREA), zip_3 = 692, geom = geo_zip692)
+sp_693 <- sp_zip693 %>%
+  summarise(area = sum(AREA), zip_3 = 693, geom = geo_zip693)
+```
+
+
+```{r make sf, warning=FALSE}
+sp_NE <- rbind(sp_680, sp_681, sp_683, sp_685, sp_686, sp_687, 
+                   sp_688, sp_689, sp_690, sp_691, sp_692, sp_693)
+# sp_westNE <- rbind(sp_688, sp_689, sp_690, sp_691, sp_692, sp_693)
+# sp_eastNE <- rbind(sp_680, sp_681, sp_683, sp_685, sp_686, sp_687)
+# sp_coreNE <- rbind(sp_680, sp_681, sp_685)
+
+dff_zip_yr<- dff1.3 %>%
+  filter(ORIG_DTE_Y >= 2010 & (zip_3_mod >= 680 & zip_3_mod <= 693)) %>%
+  group_by(zip_3_mod) %>%
+  summarize(vol = sum(orig_amt)/1000000000)
+sp_NE <- merge(sp_NE, dff_zip_yr, by.x = 'zip_3', by.y='zip_3_mod')
+sp_NE <- fortify(sp_NE)
+
+plot1_map_zip_vol <- ggplot(sp_NE) + 
+  geom_sf(data = sp_NE, aes(fill = vol), alpha = 0.7) + 
+  theme_void() + 
+  scale_fill_viridis(trans = 'log', 
+                     breaks = c(0.1, 0.5, 1, 5, 10), 
+                     name="Total Mortgage Volume ($, Billion)", 
+                     guide = guide_legend( keyheight = unit(3, units = "mm"), 
+                                           keywidth = unit(15, units = "mm"), 
+                                           label.position = "bottom", 
+                                           title.position = 'top', nrow=1) ) +
+  labs( title = "Mortgages issued since 2010 by 3-digit ZIP") + 
+  theme(
+    text = element_text(color = "#22211d"),
+    plot.background = element_rect(fill = NA , color = NA),
+    panel.background = element_rect(fill = NA, color = NA),
+    legend.background = element_rect(fill = NA , color = NA),
+
+    plot.title = element_text(size= 22, hjust=0.2, color = "#4e4d47", margin = margin(b = -0.2, t = 0.4, l = 2, unit = "cm")),
+    # plot.subtitle = element_text(size= 17, hjust=0.01, color = "#4e4d47", margin = margin(b = -0.1, t = 0.43, l = 2, unit = "cm")),
+    plot.caption = element_text( size=14, color = "#4e4d47", margin = margin(b = 0.3, r=-99, unit = "cm") ),
+    plot.margin = margin(2,2,2,2, unit = 'mm'),
+    legend.position = "bottom"
+  ) +
+  coord_sf()
+  # geom_sf_label(aes(label = as.character()))
+plot1_map_zip_vol
+```
+
+```{r map by stages}
+sp_NE <- sp_NE %>%
+  mutate(stage = case_when(
+    zip_3 == 681 ~ 1, 
+    zip_3 %in% c(680, 685) ~ 3,
+    zip_3 %in% c(683, 686, 687) ~ 5,
+    zip_3 %in% c(688, 689, 690, 691, 692, 693) ~ 10
+  ))
+sp_NE <- fortify(sp_NE)
+
+plot2_map_zip_stage <- ggplot(sp_NE) + 
+  geom_sf(data = sp_NE, aes(fill = stage), alpha = 0.7) + 
+  theme_void() + 
+  scale_fill_viridis(option = 'magma', 
+                     breaks = c(1, 3, 5, 10), 
+                     name="Year #",
+                     guide = guide_legend( keyheight = unit(3, units = "mm"), 
+                                           keywidth = unit(15, units = "mm"), 
+                                           label.position = "bottom", 
+                                           title.position = 'top', 
+                                           nrow=1, reverse = TRUE) ) +
+  labs( title = "Market Entry Plan by Year") + 
+  theme(
+    text = element_text(color = "#22211d"),
+    plot.background = element_rect(fill = NA , color = NA),
+    panel.background = element_rect(fill = NA, color = NA),
+    legend.background = element_rect(fill = NA , color = NA),
+
+    plot.title = element_text(size= 22, hjust=0.35, color = "#4e4d47", margin = margin(b = -0.2, t = 0.4, l = 2, unit = "cm")),
+    # plot.subtitle = element_text(size= 17, hjust=0.01, color = "#4e4d47", margin = margin(b = -0.1, t = 0.43, l = 2, unit = "cm")),
+    plot.caption = element_text( size=14, color = "#4e4d47", margin = margin(b = 0.3, r=-99, unit = "cm") ),
+    plot.margin = margin(2,2,2,2, unit = 'mm'),
+    legend.position = "bottom"
+  ) +
+  coord_sf()
+  # geom_sf_label(aes(label = as.character(zip_3)))
+
+plot2_map_zip_stage
+
+
+```
+
+
+
+
+
+
+```{r}
+sp_NE <- sp_NE %>%
+  mutate(highlight = zip_3 %in%)
+sp_NE <- fortify(sp_NE)
+
+plot_map_zip_stage3 <- ggplot(sp_NE) + 
+  geom_sf(data = sp_NE, aes(fill = highlight), alpha = 0.7) + 
+  theme_void() + 
+  theme(
+    text = element_text(color = "#22211d"),
+    plot.background = element_rect(fill = NA , color = NA),
+    panel.background = element_rect(fill = NA, color = NA),
+    legend.background = element_rect(fill = NA , color = NA),
+    plot.margin = margin(2,2,2,2, unit = 'mm'),
+    legend.position = "none"
+  ) +
+  scale_fill_manual(values = c("#62CFAC")) + 
+  coord_sf()
+
+  # geom_sf_label(aes(label = as.character()))
+plot_map_zip_stage3
+
+```
+

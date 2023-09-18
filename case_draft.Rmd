@@ -1,0 +1,420 @@
+---
+title: "case_draft"
+output:
+  html_document: 
+    pandoc_args: [
+      "--number-sections",
+    ]
+    fig_height: 6
+    highlight: pygments
+    theme: spacelab
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+# Load Data and Libraries
+
+```{r library, message = FALSE}
+options(scipen=999)
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+library(lubridate)
+library(forcats)
+```
+
+The .csv file cleaned from separate file. All dates converted from string to 'date' datatype. 
+
+```{r load dataframe, message = FALSE}
+# df1_fctr <- read.csv("dataset_Fall 2021.csv", header = TRUE, stringsAsFactors = TRUE)
+# # df1_str <- read.csv("dataset_Fall 2021.csv", header = TRUE, stringsAsFactors = FALSE)
+# df2 <- df1_fctr
+# 
+# date_cols = c(2,13,14,30,32,34,36,38,40,41) #all the cols that should be dates. 
+# df2[,date_cols] <- lapply(df2[, date_cols], as.Date)
+# df3 <- df2 %>%
+#   mutate(msa = as.factor(msa))
+
+load('df3.Rdata')
+```
+
+# Exploratory data analysis
+
+Below shows some basic information about the original dataframe. 
+
+```{r overview}
+# str(df3)
+summary(df3)
+
+```
+
+## Simple Graphs
+
+### Entries with different start & end interest rates more likely to fail
+
+```{r fix LAST_RT}
+df3[is.na(df3$LAST_RT),]
+```
+
+
+```{r rate change vs composition of differnet loan status}
+df3[is.na(df3$LAST_RT),"LAST_RT"] <- df3[is.na(df3$LAST_RT),"orig_rt"] # fill in 2 NAs in `LAST_RT`. 
+
+df3_diff_rt <- df3 %>%
+  filter(LAST_RT != orig_rt)
+
+p_RtDiff1 <- ggplot(df3, aes(x=LAST_STAT)) + geom_bar() + ggtitle('overall')
+p_RtDiff2 <- ggplot(df3_diff_rt, aes(x=LAST_STAT)) + geom_bar() + ggtitle('those with different rates')
+
+grid.arrange(p_RtDiff1, p_RtDiff2, nrow = 1, top="Entries w different start & end interest rates more likely to fail")
+```
+
+
+### Transform right-skewed data through log or cube root transformation
+
+First, for `orig_amt`, or Original UPB. 
+
+```{r transform dollar values}
+mybins <- 50
+
+p_trans_orig_amt1 <- ggplot(df3, aes(orig_amt)) + 
+  geom_histogram(bins = mybins, fill = '#69b3a2' ,alpha= 0.7) + 
+  ggtitle('without log transform')
+p_trans_orig_amt2 <- ggplot(df3, aes(log(orig_amt))) + 
+  geom_histogram(bins = mybins, fill = '#404080' ,alpha= 0.7) + 
+  ggtitle('log transform')
+p_trans_orig_amt3 <- ggplot(df3, aes(orig_amt^(1/3))) + 
+  geom_histogram(bins = mybins, fill = '#404080' ,alpha= 0.7) + 
+  ggtitle('cube root transform')
+
+grid.arrange(p_trans_orig_amt1, p_trans_orig_amt2, p_trans_orig_amt3, 
+             nrow = 2, top="Compare with and without log trans")
+
+```
+
+From the above graphs I think we can conclude that this variable should be log transformed. It's too right skewed without log transformation. 
+
+Next we try and transform `NET_LOSS`, defined as "The cumulative net realized gain or loss amounts for a mortgage loan resulting from a credit event."
+
+
+```{r}
+p_trans_net_loss1 <- ggplot(df3[!is.na(df3$NET_LOSS),], aes(NET_LOSS)) + 
+  geom_histogram(bins = mybins, fill = '#69b3a2' ,alpha= 0.7) + 
+  ggtitle('Net Loss Histogram')
+
+translate_const <- 0.01 - min(df3$NET_LOSS, na.rm = TRUE)
+p_trans_net_loss2 <- ggplot(df3[!is.na(df3$NET_LOSS),], aes(log(NET_LOSS + translate_const) )) + 
+  geom_histogram(bins = mybins, fill = '#404080' ,alpha= 0.7) + 
+  ggtitle('Log transformed Net Loss Histogram')
+
+p_trans_net_loss3 <- ggplot(df3[!is.na(df3$NET_LOSS),], aes(NET_LOSS^(1/3))) + 
+  geom_histogram(bins = mybins, fill = '#404080' ,alpha= 0.7) + 
+  ggtitle('cube root transformed Net Loss Histogram')
+grid.arrange(p_trans_net_loss1, p_trans_net_loss2, p_trans_net_loss3, nrow = 2, top="")
+grid.arrange(p_trans_net_loss2, p_trans_net_loss3, nrow = 1, top="")
+```
+
+
+## New columns to better understand the data.
+
+Considered the addition of `duration`, `actl_mo_payment`, and `mo_payment_diff`, but subsequently decided that they are only meaningful for `LAST_STAT == P`. The explanatory power of these variables largely disappear for  `LAST_STAT` of D, C, S, or other types, as the loan often ended early and without all remaining UPB paid off. `duration` is kept for now because it does at least tell you how long it's been going on, or how long it actually lasted. 
+
+```{r New Cols}
+# Difference between interest rates
+# Difference between oltv and ocltv
+# Share of this loan among all loans, on this property. Or, oltv / ocltv (e.g. 25%/50% = 0.5)
+# Theoretical monthly total mortgage payment (from borrowers/homeowners)
+# Maybe a new column, orig_amt - NET_LOSS = final_result
+# Maybe (for matured/prepaid) loans, calculate actual duration in months?
+
+df4 <- df3 %>%
+  mutate(rt_increase = LAST_RT - orig_rt, oltv_diff = ocltv - oltv, oltv_percentage = oltv / ocltv * 100, 
+         init_mo_payment = orig_amt * (orig_rt/100 * (1 + orig_rt/100)^orig_trm) / (-1 + (1 + orig_rt/100)^orig_trm),
+         duration = interval(FRST_DTE, LAST_DTE) %/% months(1) + 1
+         # min_rt = pmin(orig_rt, LAST_RT), 
+         # actl_mo_payment = orig_amt * (orig_rt/100 * (1 + orig_rt/100)^duration) / (-1 + (1 + orig_rt/100)^duration),
+         # mo_payment_diff = actl_mo_payment - init_mo_payment
+         ) %>%
+  relocate(rt_increase, .after=LAST_RT) %>%
+  relocate(oltv_diff, .after=ocltv) %>%
+  relocate(oltv_percentage, .before=num_bo) %>%
+  relocate(init_mo_payment, .before=orig_trm) %>%
+  relocate(duration, .after=orig_trm)%>%
+  select(-state)
+  # relocate(actl_mo_payment, .after=init_mo_payment) %>%
+  # relocate(mo_payment_diff, .after=actl_mo_payment) %>%
+
+# show the first n rows of the new df.
+df4[1:5, 1:34]
+
+# write.csv(x = df4, file = "df_new_cols_added.csv")
+# save(df4, file = 'df4.Rdata')
+
+```
+
+
+## Further Exploration of Dataframe
+
+After removing all entries with `LAST_STAT == C`, we find that changes in interest rates seem to be a good indicator, increase or decrease. The share of Ps are lower for decreased or increased, and those didn't change are the best. 
+
+```{r df4 interest rate changes}
+
+df4_NotC <- df4 %>%
+  filter(LAST_STAT != 'C')
+df4_C <- df4 %>%
+  filter(LAST_STAT == 'C')
+
+df4_NotC %>%
+  mutate(rt_change = as.factor(ifelse(rt_increase > 0, 'inc', ifelse(rt_increase < 0, 'dec', 'const') ) ) ) %>%
+  select(rt_change, rt_increase, LAST_STAT, orig_amt, ORIG_VAL, orig_rt, dti) %>%
+  group_by(rt_change) %>%
+  summarize(n=n(), P_share = (sum(LAST_STAT == 'P') / n()) , mean(orig_amt), mean(ORIG_VAL), mean(orig_rt), mean(dti, na.rm=TRUE))
+
+```
+
+From the code below we can tell that having multiple mortgages on a single property doesn't have a significant effect on the share of Ps. There's an notable difference in `orig_amt` and `ORIG_VAL`, but that is slightly irrelevant for our purpose. 
+
+```{r df4 oltv}
+
+df4_NotC %>%
+  mutate(mtpl_mortgages = as.factor(ifelse(ocltv == oltv, 'single', 'multiple' ) ) ) %>%
+  select(mtpl_mortgages, oltv, ocltv, LAST_STAT, orig_amt, ORIG_VAL, orig_rt, dti ) %>%
+  group_by(mtpl_mortgages) %>%
+  summarize(n=n(), P_share = sum(LAST_STAT == 'P') / n() , mean(orig_amt), mean(ORIG_VAL), mean(orig_rt), mean(dti, na.rm=TRUE))
+
+```
+
+
+Further investigation of `LAST_STAT != P` entries
+
+```{r}
+
+df4_C_no_delinquent <- df4_C %>%
+  filter(is.na(F30_DTE))
+
+```
+
+```{r}
+
+df4_C %>%
+  group_by(SELLER) %>%
+  summarise(count = n())
+
+df4_C %>%
+  group_by(SERVICER) %>%
+  summarise(count = n())
+
+
+
+df4_NotC %>%
+  group_by(zip_3) %>%
+  summarise(count = n())
+
+df4_NotC %>%
+  mutate(zip_3 = as.factor(ifelse(zip_3 < 660 | zip_3 == 682 | zip_3 > 694, 0, zip_3)),) %>%
+  group_by(zip_3) %>%
+  summarise(count = n())
+
+
+```
+
+
+
+# Initial model for LAST_STAT
+
+## Prepare dataframe for modeling
+
+Create a few new variables, remove some irrelevant variables, and modify a few others. 
+
+The response variable in this model will be `is_success`, a boolean variable that will be `TRUE` when `LAST_STAT` is P, and `FALSE` otherwise. Note that C will be filtered out and not considered. 
+
+```{r prepare df for modeling}
+# transform dollar values with cube root?
+# convert LAST_STAT and create new boolean value, as Y. 
+# remove LAST_STAT == C
+
+# remove num_bo == NAs
+# new col called CSCORE_AVG: average of 2 credit scores
+
+# removed a few cols before building the model
+
+df5 <- df4 %>%
+  filter(LAST_STAT != 'C') %>% 
+  mutate(is_success = ifelse(LAST_STAT == 'P', TRUE, FALSE), 
+         CSCORE_AVG = ifelse(!is.na(CSCORE_B),CSCORE_B, CSCORE_C )/2 + ifelse(!is.na(CSCORE_C),CSCORE_C, CSCORE_B )/2,
+         dti = ifelse( is.na(dti), 0, dti), 
+         mi_pct = ifelse( is.na(mi_pct), 0, dti),
+         zip_3 = as.factor(zip_3),
+         msa = fct_collapse(msa, 'other_msa' = c('10740', '11700', '16740', '16980', '28140', '29820', 
+                       '31700', '34980', '35620', '38860', '39900', '42140', '47260'))
+         ) %>%
+  # filter(!is.na(CSCORE_AVG),
+  # dti = ifelse( is.na(dti), 0, dti) 
+  # )%>%        # this can be filtered out with glm() so I wont do it here for now. 
+  relocate(CSCORE_AVG, .after = dti) %>%
+  select(is_success, everything(), -CSCORE_B, -CSCORE_C, -LAST_STAT, -LAST_DTE, -ORIG_DTE, -FRST_DTE, -duration, -rt_increase, -oltv_diff) %>%
+  select(1:26, 40)
+
+df4 %>%
+  filter(CSCORE_B <= 600 | CSCORE_C <= 600) %>%
+  summarise(n())
+
+df5_lowCredit<-df5 %>%
+  filter(CSCORE_AVG <= 600)
+
+rt_working_data %>%
+  filter(CSCORE_B <= 600 | CSCORE_C <= 600) %>%
+  summarise(n())
+
+df6_lowCredit<-df6 %>%
+  filter(CSCORE_AVG <= 600)
+
+sapply(df5 ,function(x) sum(is.na(x)))
+
+df4_na_LAST_UPB <- df4[is.na(df5$LAST_UPB),] %>%
+  filter(LAST_STAT != 'C')
+
+# str(df5)
+
+```
+
+## First attempt at modeling for `is_success`. 
+
+##### Initial model 1
+
+Everything that might be relevant were included. 
+
+```{r initial model}
+# mod_init <- glm(is_success ~. -LOAN_ID, family = binomial(link='logit'), data=df5, na.action = 'na.omit')
+# summary(mod_init)
+# coef(mod_init)
+```
+
+##### Initial model 2
+
+Removed `SELLER` because it just took up so much space, also too much variables to account for. Will explore further later.
+
+```{r initial model 2}
+# mod_init2 <- glm(is_success ~. -LOAN_ID-SELLER, family = binomial(link='logit'), data=df5, na.action = 'na.omit')
+# summary(mod_init2)
+```
+
+##### Initial model 3
+
+Removed both `SELLER` and `SERVICER` because to many factors, and that makes model too complex. Want simpler model for now. 
+`zip_3` removed from model because it causes 11 "singularities". Should try to add back later. 
+
+```{r initial model 3}
+mod_init3 <- glm(is_success ~. -LOAN_ID -SELLER -SERVICER -zip_3, family = binomial(link='logit'), data=df5, na.action = 'na.omit')
+summary(mod_init3)
+# alias(mod_init3)
+```
+
+```{r initial model 4}
+df5.1 <- df5 %>%
+  select( -SELLER, -SERVICER, -zip_3) %>%
+  filter(PROP_TYP != 'CP')
+```
+
+
+```{r initial model 4}
+rand = sort(sample(nrow(df5.1), nrow(df5.1)*.75))
+mortrain<-df5.1[rand,]
+mortest<-df5.1[-rand,]
+mod_init4 <- glm(is_success ~. -LOAN_ID, family = binomial(link='logit'), data=mortrain, na.action = 'na.omit')
+summary(mod_init4)
+
+df5.2 <- df5.1 %>%
+  select(where(is.numeric)) %>%
+  filter(!is.na(LAST_UPB), !is.na(num_bo), !is.na(CSCORE_AVG)  )
+
+
+cor(df5.2)
+# summary(mod_init4)
+
+```
+
+
+```{r initial model 4}
+pred = predict(mod_init4,mortest)
+idx = which(pred>=0.5)
+pred[idx] = 1
+pred[-idx] = 0
+confusionmatrix = table(pred, mortest$is_success)
+print(confusionmatrix)
+confusionmatrix[1,2]
+print(1-(confusionmatrix[1,2]+confusionmatrix[2,1])/nrow(mortest))
+print(1-(confusionmatrix[1,2]+confusionmatrix[2,1])/nrow(mortest))
+#summary(mod_init3)
+# alias(mod_init3)
+```
+
+```{r initial model 4}
+mod_init4 <- glm(is_success ~. -LOAN_ID -SELLER -SERVICER -zip_3 -LAST_UPB, 
+                 family = binomial(link='logit'), data=df5, na.action = 'na.omit')
+summary(mod_init4)
+# alias(mod_init4)
+```
+
+
+
+## Second modeling attempt including `rt_dev`
+
+##### Clean imported df first
+
+
+
+```{r}
+rt_working_data
+
+df5 <- df4 %>%
+  filter(LAST_STAT != 'C') %>% 
+  mutate(is_success = ifelse(LAST_STAT == 'P', TRUE, FALSE), 
+         CSCORE_AVG = ifelse(!is.na(CSCORE_B),CSCORE_B, CSCORE_C )/2 + ifelse(!is.na(CSCORE_C),CSCORE_C, CSCORE_B )/2,
+         dti = ifelse( is.na(dti), 0, dti), 
+         mi_pct = ifelse( is.na(mi_pct), 0, dti),
+         zip_3 = as.factor(zip_3),
+         msa = fct_collapse(msa, 'other_msa' = c('10740', '11700', '16740', '16980', '28140', '29820', 
+                       '31700', '34980', '35620', '38860', '39900', '42140', '47260'))
+         ) %>%
+  # filter(!is.na(CSCORE_AVG),
+  # dti = ifelse( is.na(dti), 0, dti) 
+  # )%>%        # this can be filtered out with glm() so I wont do it here for now. 
+  relocate(CSCORE_AVG, .after = dti) %>%
+  select(is_success, everything(), -CSCORE_B, -CSCORE_C, -LAST_STAT, -LAST_DTE, -ORIG_DTE, -FRST_DTE, -duration, -rt_increase, -oltv_diff) %>%
+  select(1:26, 40)
+
+
+df6 <- rt_working_data %>%
+    mutate(is_success = ifelse(LAST_STAT == 'P', TRUE, FALSE), 
+         CSCORE_AVG = ifelse(!is.na(CSCORE_B),CSCORE_B, CSCORE_C )/2 + ifelse(!is.na(CSCORE_C),CSCORE_C, CSCORE_B )/2,
+         dti = ifelse( is.na(dti), 0, dti), 
+         mi_pct = ifelse( is.na(mi_pct), 0, dti),
+         zip_3 = as.factor(zip_3),
+         msa = fct_collapse(msa, 'other_msa' = c('10740', '11700', '16740', '16980', '28140', '29820', 
+                       '31700', '34980', '35620', '38860', '39900', '42140', '47260'))
+         ) %>%
+  relocate(CSCORE_AVG, .after = dti) %>%
+  select(is_success, everything(), -CSCORE_B, -CSCORE_C, -LAST_STAT, -LAST_DTE, -ORIG_DTE, -FRST_DTE, -duration, -rt_increase, -oltv_diff) %>%
+  select(1:26, 40)
+
+```
+
+
+##### mod_sec1
+
+
+
+
+# Questions/Comments:
+
+1. Should currently active mortgages `(LAST_STAT == C)` be included in building the model? We don't know the outcome of them yet so how can we tell? 
+2. Primary goal is "maximizing the dollar value of mortgages issued while limiting the number of defaulting loans". What is "dollar value of mortgages"? Is it the principal only or does it include interest payments?  
+3.  How to account for the credit score of the 2nd person, when applicable? For now I just did average of the 2 when applicable. 
+4. I have some questions about how NA's in LAST_UPB are handled. They were converted to 0, but not sure if that's the best way. For the 3 initial models, I just omitted them. 
+5. Consider applying tests (ANOVA, t-test, etc.)
+6. Need to correct for skewed data. Not yet done.
+7. So far no model includes any dates, but we have have 10+ variables of 'date' datatype. 
