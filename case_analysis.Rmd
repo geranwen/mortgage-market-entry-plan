@@ -1,0 +1,506 @@
+---
+title: "case_draft3"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Load Data and Libraries
+
+```{r library, message = FALSE}
+# library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+library(lubridate)
+library(forcats)
+library(caret)
+library(sf)
+library(performance)
+source('fn_mod_eval.R')
+options(scipen=999)
+```
+
+## Change back to factors and chars, instead of float. 
+
+```{r load two df}
+dff0 <- read.csv("final_df.csv", header = TRUE)
+dff0 <- dff0 %>%
+  mutate(ROW = LOAN_ID, 
+         LAST_STAT = case_when(LAST_STAT == 1 ~ 'P',
+                               LAST_STAT == 2 ~ 'D',
+                               LAST_STAT == 3 ~ 'F',
+                               LAST_STAT == 4 ~ 'T',
+                               LAST_STAT == 5 ~ 'R',
+                               LAST_STAT == 6 ~ 'S',
+                               LAST_STAT == 7 ~ 'L',
+                               LAST_STAT == 8 ~ 'N'))%>%
+  select(ROW, everything(), -X, -LOAN_ID)
+```
+
+
+```{r load two df}
+df8 <- read.csv("dataset_Fall 2021 row.csv", header = TRUE, stringsAsFactors = TRUE)
+date_cols = c(3,14,15,31,33,35,37,39,41,42) #all the cols that should be dates.
+df8[,date_cols] <- lapply(df8[, date_cols], as.Date)
+
+load('df3.Rdata')
+
+df3.1 <- df3 %>%
+  select(LOAN_ID, SELLER, SERVICER)
+df8.1 <- df8 %>%
+  mutate(duration = interval(FRST_DTE, LAST_DTE) %/% months(1) + 1) %>%
+  select(ROW, LOAN_ID, LAST_DTE, ORIG_CHN, duration, 
+         ORIG_DTE, FRST_DTE, purpose, PROP_TYP, occ_stat, 
+         F30_DTE, F60_DTE, F90_DTE, F120_DTE, 
+         F180_DTE, LPI_DTE, FCC_DTE)
+
+df8.2 <- merge(df8.1, df3.1, by='LOAN_ID')%>%
+  arrange(ROW)
+```
+
+
+```{r merge dfs}
+dff1 <- merge(df8.2 ,dff0 , by="ROW") %>%
+  arrange(ROW) %>% 
+  rename(LAST_DTE = LAST_DTE.x, 
+         ORIG_CHN = ORIG_CHN.x, 
+         SELLER_COUNT = SELLER.COUNT, 
+         SERVICER_COUNT = SERVICER.COUNT, 
+         ORIG_DTE = ORIG_DTE.x, 
+         FRST_DTE = FRST_DTE.x, 
+         purpose = purpose.x,
+         PROP_TYP = PROP_TYP.x,
+         occ_stat = occ_stat.x, 
+         F30_DTE = F30_DTE.x, 
+         F60_DTE = F60_DTE.x, 
+         F90_DTE = F90_DTE.x, 
+         F120_DTE = F120_DTE.x, 
+         F180_DTE = F180_DTE.x, 
+         LPI_DTE = LPI_DTE.x, 
+         FCC_DTE = FCC_DTE.x
+         ) %>%
+  select(ROW, LOAN_ID, LAST_DTE, LAST_STAT, ORIG_CHN, SELLER, SELLER_COUNT, SERVICER, SERVICER_COUNT, 
+         orig_rt, LAST_RT, rt_change, rt_dev, prevail_rt, orig_amt, ORIG_VAL, LAST_UPB, 
+         orig_trm, term, duration, ORIG_DTE, FRST_DTE, oltv, ocltv, num_bo, CO_BORROWER, dti, 
+         CSCORE_B, CSCORE_C, CSCORE_A, FTHB_FLG, purpose, PROP_TYP, NUM_UNIT, occ_stat, 
+         msa, zip_3, mi_pct, F30_DTE, F30_UPB, F60_DTE, F60_UPB, F90_DTE, F90_UPB, 
+         F120_DTE, F120_UPB, F180_DTE, F180_UPB, LPI_DTE, FCC_DTE, NET_LOSS, relo_flg)
+
+dff1 %>%
+  group_by(LAST_STAT) %>%
+  summarize(n())
+# write.csv(x = dff1, file = "dff1.csv")
+```
+
+## Collapse factors and merge banks
+
+```{r}
+dff1 <- dff1 %>%
+  mutate(SELLER = fct_collapse(SELLER, 
+                               'Flagstar Bank, FSB' = c('Flagstar Bank, Fsb', 'Flagstar Bank, FSB'), 
+                               'Truist Bank' = c('Suntrust Mortgage Inc.', 'Suntrust Bank', 
+                                                 'Truist Bank (Formerly Suntrust Bank)', 
+                                                 'Truist Bank (formerly SunTrust Bank)'),
+                               'Wells Fargo' = c('Wells Fargo Bank, N.A.', 
+                                                 'Wells Fargo Credit Risk Transfer Securities Trust 2015', 
+                                                 'Wells Fargo Bank,  Na'))) %>%
+  mutate(SELLER = fct_collapse(SELLER,  
+                               'JPMorgan Chase' = c('JPMorgan Chase Bank, National Association', 
+                                                    'Jpmorgan Chase Bank, National Association', 
+                                                    'Jpmorgan Chase Bank, Na', 'Jp Morgan Chase Bank, Na', 
+                                                    'Chase Home Finance, Llc', 'Jp Morgan Chase Bank, Na',
+                                                    'J.P. Morgan Madison Avenue Securities Trust, Series 2015-1', 
+                                                    'J.P. Morgan Madison Avenue Securities Trust, Series 2014-1', 
+                                                    'Chase Home Finance (Cie 1)', 'Chase Home Finance'), 
+                               'PennyMac Corp' = c('Pennymac Corp.', 'PennyMac Corp.', 'PennyMac Loan Services, LLC'),
+                               'Loandepot.Com, Llc' = c('loanDepot.com, LLC', 'PennyMac Corp.'))) %>%
+  mutate(SELLER = fct_collapse(SELLER,  
+                               'NationStar Mortgage, LLC' = c('Nationstar Mortgage, Llc', 'NationStar Mortgage, LLC'),
+                               'Amerihome Mortgage Company, LLC' = c('Amerihome Mortgage Company, Llc', 'AmeriHome Mortgage Company, LLC'),
+                               'United Wholesale Mortgage' = c('United Shore Financial Services, Llc Dba United Wholesale Mortgage',
+                                                                     'United Shore Financial Services, LLC dba United Wholesale Mortgage'),
+                               'Lakeview Loan Servicing, LLC' = c('Lakeview Loan Servicing, Llc', 'Lakeview Loan Servicing, LLC'),
+                               'Quicken Loans' = c('Quicken Loans, Llc', 'Quicken Loans, LLC', 'Quicken Loans Inc.'),
+                               'Federal Home Loan Bank Of Chicago' = c('Federal Home Loan Bank Of Chicago', 'Federal Home Loan Bank of Chicago'),
+                               'Finance Of America Mortgage' = c('Finance Of America Mortgage Llc', 'Finance of America Mortgage LLC'),
+                               'Movement Mortgage' = c('Movement Mortgage, Llc', 'Movement Mortgage, LLC'),
+                               'Metlife' = c('Metlife Home Loans Llc', 'Metlife Bank, Na')
+                               ))
+dff1.1 <- dff1 %>%
+  mutate(ORIG_DTE_Y = as.numeric(format(ORIG_DTE, '%Y')))
+```
+
+## N.E. historic total vol
+
+```{r}
+df_max_loan <- read.csv("df_max_loan.csv", header = TRUE, stringsAsFactors = FALSE) %>%
+    rename(Year=ï..Year)
+dff_yrly_historic_vals <- dff1.1 %>%
+  filter(ORIG_DTE >= as.Date('2000-01-01')) %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(yrly_total = sum(orig_amt)) %>%
+  arrange(-ORIG_DTE_Y)
+dff_yrly_historic_vals <- merge(dff_yrly_historic_vals, df_max_loan, by.x = 'ORIG_DTE_Y', by.y = 'Year')
+dff_yrly_historic_vals
+```
+
+
+## Analyze orig_amt by Seller vs Year
+
+```{r}
+dff1_sum_year_byBank <- dff1.1 %>%
+  select(SELLER, ORIG_DTE_Y, orig_amt) %>%
+  group_by(SELLER, ORIG_DTE_Y) %>%
+  summarize(total = sum(orig_amt)) %>%
+  arrange(ORIG_DTE_Y)
+```
+
+
+```{r}
+dff1_sum_year_byBank4 <- pivot_wider(dff1_sum_year_byBank, names_from = ORIG_DTE_Y, values_from = total) %>% 
+  replace(is.na(.), 0) %>%
+  mutate(cumulative_ttl = rowSums(across(c(1:22)))) %>%
+  relocate(cumulative_ttl, .before = '1999')
+# dff1_sum_year_byBank4
+# write.csv(x = dff1_sum_year_byBank4, file = "dff1_sum_year_byBank4.csv")
+```
+
+## Analyze orig_amt by zip_3 vs year
+
+
+```{r}
+dff1.2 <- dff1.1 %>%
+  mutate(zip_3_mod = ifelse(zip_3 >= 693 & zip_3 < 700, 693, zip_3),
+         zip_3_mod = ifelse(zip_3_mod < 680 | zip_3_mod == 682 | zip_3_mod >= 700, 0, zip_3_mod))
+
+# save(dff1.2, file='dff1.2.Rdata')
+# write.csv(x = temp, file = "zip vs year.csv")
+
+dff1_zip_year_sum <- dff1.2 %>% 
+  group_by(zip_3_mod, ORIG_DTE_Y) %>%
+  summarise(Sum = sum(orig_amt)) %>%
+  arrange(-ORIG_DTE_Y)
+
+dff1_zip_year_sum <- pivot_wider(dff1_zip_year_sum, names_from = ORIG_DTE_Y, values_from = Sum) %>%
+  mutate(cumulative_ttl = rowSums(across(c(1:22)))) %>%
+  relocate(cumulative_ttl, .before='2020') %>%
+  arrange(-cumulative_ttl)
+dff1_zip_year_sum
+# save(dff1_zip_year_sum, file = 'dff1_zip_year_sum.Rdata')
+```
+
+
+
+```{r full df stats}
+dff1.2 %>%
+  filter(LAST_STAT == 'N' | LAST_STAT == 'D' | LAST_STAT == 'F' | LAST_STAT == 'S') %>%
+  summarize(n(), sum= sum(orig_amt))
+
+dff1.2 %>%
+  summarize(rt_dev_q1 = quantile(rt_dev, 0.25),
+            rt_dev_q2 = quantile(rt_dev, 0.5), 
+            rt_dev_q3 = quantile(rt_dev, 0.75),
+            CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+            CSCORE_A_q2 = quantile(CSCORE_A, 0.5),
+            CSCORE_A_q3 = quantile(CSCORE_A, 0.75),
+            orig_amt_q1 = quantile(orig_amt, 0.25),
+            orig_amt_mean = quantile(orig_amt, 0.5),
+            orig_amt_q3 = quantile(orig_amt, 0.75),
+            dti_q1 = quantile(dti, 0.25),
+            dti_q2 = quantile(dti, 0.5),
+            dti_q3 = quantile(dti, 0.75))
+
+
+```
+
+
+Conlcusion from above: zip_681 (Omaha NE) is the best place to start. 
+
+## Slicing for Y1~Y3
+
+```{r}
+dff_Omaha <- dff1.2 %>% filter(zip_3_mod == 681, ORIG_DTE_Y > 1999)
+
+# summary(dff_Omaha)
+
+dff_Omaha %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(n(), sum(orig_amt), sum(LAST_STAT =='P')/n()) %>%
+  arrange(-ORIG_DTE_Y)
+
+```
+
+
+```{r segA}
+# summary(dff_Omaha)
+dff_Omaha_segA <- dff_Omaha %>%
+  filter((PROP_TYP == 'SF' | PROP_TYP == 'CO') &  
+         (purpose == 'P' | purpose == 'R') &  
+         occ_stat == 'P')
+
+
+dff_Omaha_yrly_key_val <- dff_Omaha_segA %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(rt_dev_q1 = quantile(rt_dev, 0.25),
+            rt_dev_q2 = quantile(rt_dev, 0.5), 
+            rt_dev_q3 = quantile(rt_dev, 0.75),
+            CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+            CSCORE_A_q2 = quantile(CSCORE_A, 0.5),
+            CSCORE_A_q3 = quantile(CSCORE_A, 0.75),
+            orig_amt_q1 = quantile(orig_amt, 0.25),
+            orig_amt_mean = quantile(orig_amt, 0.5),
+            orig_amt_q3 = quantile(orig_amt, 0.75),
+            dti_q3 = quantile(dti, 0.75)) %>%
+  arrange(-ORIG_DTE_Y)
+# dff_Omaha_yrly_key_val
+
+dff_Omaha_segA <- merge(dff_Omaha_segA, dff_Omaha_yrly_key_val, by = "ORIG_DTE_Y") %>%
+  filter(rt_dev < rt_dev_q3 
+         & CSCORE_A > CSCORE_A_q1 
+         & orig_amt < orig_amt_q3
+         & dti < dti_q3
+         ) %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(n(), seg_total = sum(orig_amt), success_rt = sum(LAST_STAT =='P')/n())
+dff_Omaha_segA <- merge(dff_Omaha_segA, dff_yrly_historic_vals, by = "ORIG_DTE_Y") %>%
+  mutate(seg_share = seg_total / yrly_total) %>% 
+  relocate(seg_share, .after='seg_total') %>%
+  relocate(yrly_total, .after='seg_share') %>%
+  arrange(-ORIG_DTE_Y)
+dff_Omaha_segA
+```
+
+```{r segB}
+dff_Omaha_segB <- dff_Omaha %>%
+  filter(PROP_TYP != 'MH' &  
+         (purpose == 'P' | purpose == 'R') &  
+         (occ_stat == 'P' | occ_stat == 'S')) %>%
+  group_by(ORIG_DTE_Y) %>% 
+  mutate(rt_dev_q3 = quantile(rt_dev, 0.75),
+         CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+         orig_amt_q1 = quantile(orig_amt, 0.25),
+         orig_amt_mean = quantile(orig_amt, 0.5),
+         orig_amt_q3 = quantile(orig_amt, 0.75),
+         dti_limit = 50)
+
+dff_Omaha_segB <- merge(dff_Omaha_segB, df_max_loan, by.x = 'ORIG_DTE_Y', by.y = "Year") %>%
+  filter(rt_dev < rt_dev_q3 & 
+           CSCORE_A > CSCORE_A_q1 & 
+           orig_amt < fnma_max & 
+           dti <= dti_limit) %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(count = n(), seg_total = sum(orig_amt), success = sum(LAST_STAT =='P')/n())
+dff_Omaha_segB <- merge(dff_Omaha_segB, dff_yrly_historic_vals) %>%
+  mutate(seg_share = seg_total/yrly_total) %>% 
+  relocate(seg_share, .after='seg_total') %>%
+  relocate(yrly_total, .after='seg_share') %>%
+  arrange(-ORIG_DTE_Y)
+
+# dff_Omaha_segA
+# dff_Omaha_segB
+
+# summary(dff_Omaha$orig_amt)
+
+#   summarize(n(), seg_total = sum(orig_amt), sum(LAST_STAT =='P')/n())
+# merge(dff_Omaha_segA, dff_yrly_historic_vals, by = "ORIG_DTE_Y") %>%
+#   mutate(seg_share = seg_total / yrly_total) %>% 
+#   relocate(seg_share, .after='seg_total') %>%
+#   relocate(yrly_total, .after='seg_share') %>%
+#   arrange(-ORIG_DTE_Y)
+```
+
+```{r segC}
+dff_Lincoln <- dff1.2 %>% filter(zip_3_mod == 685)
+dff_segC <- dff_Lincoln %>%
+  filter(PROP_TYP != 'MH' &  
+         (purpose == 'P' | purpose == 'R') &  
+         (occ_stat == 'P' | occ_stat == 'S')) %>%
+  group_by(ORIG_DTE_Y) %>% 
+  mutate(rt_dev_q3 = quantile(rt_dev, 0.75),
+         CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+         orig_amt_q1 = quantile(orig_amt, 0.25),
+         orig_amt_mean = quantile(orig_amt, 0.5),
+         orig_amt_q3 = quantile(orig_amt, 0.75),
+         dti_limit = 50)
+
+dff_segC <- merge(dff_segC, df_max_loan, by.x = 'ORIG_DTE_Y', by.y = "Year") %>%
+  filter(rt_dev < rt_dev_q3 & 
+           CSCORE_A > CSCORE_A_q1 & 
+           orig_amt < fnma_max & 
+           dti <= dti_limit) %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(count = n(), seg_total = sum(orig_amt), success = sum(LAST_STAT =='P')/n())
+dff_segC <- merge(dff_segC, dff_yrly_historic_vals) %>%
+  mutate(seg_share = seg_total/yrly_total) %>% 
+  relocate(seg_share, .after='seg_total') %>%
+  relocate(yrly_total, .after='seg_share') %>%
+  arrange(-ORIG_DTE_Y)
+
+# dff_Omaha_segA
+# dff_Omaha_segB
+dff_segC
+
+
+```
+ 
+```{r segD}
+dff_greaterOmaha <- dff1.2 %>% filter(zip_3_mod == 680)
+dff_segD <- dff_greaterOmaha %>%
+  filter(PROP_TYP != 'MH' &  
+         (purpose == 'P' | purpose == 'R') &  
+         (occ_stat == 'P' | occ_stat == 'S')) %>%
+  group_by(ORIG_DTE_Y) %>% 
+  mutate(rt_dev_q3 = quantile(rt_dev, 0.75),
+         CSCORE_A_q1 = quantile(CSCORE_A, 0.25),
+         orig_amt_q1 = quantile(orig_amt, 0.25),
+         orig_amt_mean = quantile(orig_amt, 0.5),
+         orig_amt_q3 = quantile(orig_amt, 0.75),
+         dti_limit = 50)
+
+dff_segD <- merge(dff_segD, df_max_loan, by.x = 'ORIG_DTE_Y', by.y = "Year") %>%
+  filter(rt_dev < rt_dev_q3 & 
+           CSCORE_A > CSCORE_A_q1 & 
+           orig_amt < fnma_max & 
+           dti <= dti_limit) %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(count = n(), seg_total = sum(orig_amt), success = sum(LAST_STAT =='P')/n())
+dff_segD <- merge(dff_segD, dff_yrly_historic_vals) %>%
+  mutate(seg_share = seg_total/yrly_total) %>% 
+  relocate(seg_share, .after='seg_total') %>%
+  relocate(yrly_total, .after='seg_share') %>%
+  arrange(-ORIG_DTE_Y)
+
+dff_segD
+```
+ 
+ 
+## Y5 
+
+```{r segE}
+dff_NECore <- dff1.2 %>% filter(zip_3_mod == 680 | zip_3_mod == 681 | zip_3_mod == 685 )
+dff_segE <- dff_NECore %>%
+  filter(PROP_TYP != 'MH' &  
+         purpose != 'U' &  
+         occ_stat != 'U') %>%
+  group_by(ORIG_DTE_Y) %>% 
+  mutate(rt_dev_p85 = quantile(rt_dev, 0.85),
+         CSCORE_A_p15 = quantile(CSCORE_A, 0.15),
+         orig_amt_q1 = quantile(orig_amt, 0.25),
+         orig_amt_mean = quantile(orig_amt, 0.5),
+         orig_amt_q3 = quantile(orig_amt, 0.75),
+         dti_limit = 50)
+
+dff_segE <- merge(dff_segE, df_max_loan, by.x = 'ORIG_DTE_Y', by.y = "Year") %>%
+  filter(rt_dev < rt_dev_p85 & 
+           CSCORE_A > CSCORE_A_p15 & 
+           orig_amt < fnma_max & 
+           dti <= dti_limit) %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(count = n(), seg_total = sum(orig_amt), success = sum(LAST_STAT =='P')/n())
+dff_segE <- merge(dff_segE, dff_yrly_historic_vals) %>%
+  mutate(seg_share = seg_total/yrly_total) %>% 
+  relocate(seg_share, .after='seg_total') %>%
+  relocate(yrly_total, .after='seg_share') %>%
+  arrange(-ORIG_DTE_Y)
+
+dff_segE
+```
+
+```{r segF}
+dff_eastNE_nonCore <- dff1.2 %>% filter(zip_3_mod == 683 | zip_3_mod == 686 | zip_3_mod == 687)
+dff_segF <- dff_eastNE_nonCore %>%
+  filter(PROP_TYP != 'MH' &  
+         purpose != 'U' &  
+         occ_stat != 'U') %>%
+  group_by(ORIG_DTE_Y) %>% 
+  mutate(rt_dev_p85 = quantile(rt_dev, 0.85),
+         CSCORE_A_p15 = quantile(CSCORE_A, 0.15),
+         orig_amt_q1 = quantile(orig_amt, 0.25),
+         orig_amt_mean = quantile(orig_amt, 0.5),
+         orig_amt_q3 = quantile(orig_amt, 0.75),
+         dti_limit = 50)
+
+dff_segF <- merge(dff_segF, df_max_loan, by.x = 'ORIG_DTE_Y', by.y = "Year") %>%
+  filter(rt_dev < rt_dev_p85 & 
+           CSCORE_A > CSCORE_A_p15 & 
+           orig_amt < fnma_max & 
+           dti <= dti_limit) %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(count = n(), seg_total = sum(orig_amt), success = sum(LAST_STAT =='P')/n())
+dff_segF <- merge(dff_segF, dff_yrly_historic_vals) %>%
+  mutate(seg_share = seg_total/yrly_total) %>% 
+  relocate(seg_share, .after='seg_total') %>%
+  relocate(yrly_total, .after='seg_share') %>%
+  arrange(-ORIG_DTE_Y)
+
+dff_segF
+
+```
+
+ 
+```{r SegG}
+dff_eastNE <- dff1.2 %>% filter(zip_3_mod >= 680 & zip_3_mod <= 687)
+dff_segG <- dff_eastNE %>%
+  filter(PROP_TYP != 'MH' &  
+         purpose != 'U' &  
+         occ_stat != 'U') %>%
+  group_by(ORIG_DTE_Y) %>% 
+  mutate(rt_dev_p90 = quantile(rt_dev, 0.90),
+         CSCORE_A_p10 = quantile(CSCORE_A, 0.1),
+         orig_amt_q1 = quantile(orig_amt, 0.25),
+         orig_amt_mean = quantile(orig_amt, 0.5),
+         orig_amt_q3 = quantile(orig_amt, 0.75),
+         dti_limit = 50)
+
+dff_segG <- merge(dff_segG, df_max_loan, by.x = 'ORIG_DTE_Y', by.y = "Year") %>%
+  filter(rt_dev < rt_dev_p90 & 
+           CSCORE_A > CSCORE_A_p10 & 
+           orig_amt < fnma_max & 
+           dti <= dti_limit) %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(count = n(), seg_total = sum(orig_amt), success = sum(LAST_STAT =='P')/n())
+dff_segG <- merge(dff_segG, dff_yrly_historic_vals) %>%
+  mutate(seg_share = seg_total/yrly_total) %>% 
+  relocate(seg_share, .after='seg_total') %>%
+  relocate(yrly_total, .after='seg_share') %>%
+  arrange(-ORIG_DTE_Y)
+
+dff_segG
+```
+ 
+ 
+```{r segH}
+dff_westNE <- dff1.2 %>% filter(zip_3_mod >= 688 & zip_3_mod <= 693)
+dff_segH <- dff_westNE %>%
+  filter(PROP_TYP != 'MH' &  
+         purpose != 'U' &  
+         occ_stat != 'U') %>%
+  group_by(ORIG_DTE_Y) %>% 
+  mutate(rt_dev_p90 = quantile(rt_dev, 0.90),
+         CSCORE_A_p10 = quantile(CSCORE_A, 0.1),
+         orig_amt_q1 = quantile(orig_amt, 0.25),
+         orig_amt_mean = quantile(orig_amt, 0.5),
+         orig_amt_q3 = quantile(orig_amt, 0.75),
+         dti_limit = 50)
+
+dff_segH <- merge(dff_segH, df_max_loan, by.x = 'ORIG_DTE_Y', by.y = "Year") %>%
+  filter(rt_dev < rt_dev_p90 & 
+           CSCORE_A > CSCORE_A_p10 & 
+           orig_amt < fnma_max & 
+           dti <= dti_limit) %>%
+  group_by(ORIG_DTE_Y) %>%
+  summarize(count = n(), seg_total = sum(orig_amt), success = sum(LAST_STAT =='P')/n())
+dff_segH <- merge(dff_segH, dff_yrly_historic_vals) %>%
+  mutate(seg_share = seg_total/yrly_total) %>% 
+  relocate(seg_share, .after='seg_total') %>%
+  relocate(yrly_total, .after='seg_share') %>%
+  arrange(-ORIG_DTE_Y)
+
+dff_segH
+```
+ 
+

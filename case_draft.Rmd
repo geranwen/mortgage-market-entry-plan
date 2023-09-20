@@ -264,18 +264,18 @@ df4 %>%
 
 df5_lowCredit<-df5 %>%
   filter(CSCORE_AVG <= 600)
-
-rt_working_data %>%
+ 
+rt_working_data <-df4 %>%
   filter(CSCORE_B <= 600 | CSCORE_C <= 600) %>%
   summarise(n())
-
-df6_lowCredit<-df6 %>%
-  filter(CSCORE_AVG <= 600)
-
-sapply(df5 ,function(x) sum(is.na(x)))
-
-df4_na_LAST_UPB <- df4[is.na(df5$LAST_UPB),] %>%
-  filter(LAST_STAT != 'C')
+# 
+# df6_lowCredit<-df6 %>%
+#   filter(CSCORE_AVG <= 600)
+# 
+# sapply(df5 ,function(x) sum(is.na(x)))
+# 
+# df4_na_LAST_UPB <- df4[is.na(df5$LAST_UPB),] %>%
+#   filter(LAST_STAT != 'C')
 
 # str(df5)
 
@@ -368,7 +368,7 @@ summary(mod_init4)
 
 
 ```{r}
-rt_working_data
+# rt_working_data
 
 df5 <- df4 %>%
   filter(LAST_STAT != 'C') %>% 
