@@ -2,5 +2,6 @@
 /from_shared_drive
 /xlsx_files_for_analysis
 /csv_files
+/graph
 .Rhistory
 *.pdf
